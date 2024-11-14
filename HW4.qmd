@@ -1,0 +1,33 @@
+---
+title: "Homework Assignment #4"
+subtitle: "Prioritizing potential aquaculture"
+author: "Haylee Oyler"
+date: last-modified
+execute: 
+  eval: true
+  warning: false
+  message: false
+format:
+  html:
+    toc: true
+editor_options: 
+  chunk_output_type: console
+---
+
+### Load packages
+```{r}
+#| code-fold: true
+#| code-summary: "Reveal code"
+
+library(sf)
+library(here)
+library(terra)
+library(tmap)
+library(tidyverse)
+library(viridisLite)
+library(RColorBrewer)
+library(kableExtra)
+library(testthat)
+library(patchwork)
+```
+
