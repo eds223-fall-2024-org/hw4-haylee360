@@ -31,3 +31,24 @@ library(testthat)
 library(patchwork)
 ```
 
+## Read in data
+```{r}
+west_eez <- read_sf(here("data", "wc_regions_clean.shp"))
+bahtymetry <- stars::read_stars(here("data", "depth.tif"))
+sst <- # combine rasters into raster stack 
+```
+
+### Check that CRS match
+```{r}
+#| warning: true
+#| code-fold: true
+#| code-summary: "Reveal code"
+
+# Confirm the CRS match for the Houston rasters
+if(st_crs(roads) == st_crs(blackout_mask)) {
+    print("Coordinate reference systems match")
+  } else {
+      warning("Coordinate reference systems do not match, transforming now...")
+    roads <- st_transform(roads, crs=st_crs(blackout_mask))
+}
+```
