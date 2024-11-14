@@ -34,9 +34,36 @@ library(patchwork)
 ## Read in data
 ```{r}
 west_eez <- read_sf(here("data", "wc_regions_clean.shp"))
-bahtymetry <- stars::read_stars(here("data", "depth.tif"))
-sst <- # combine rasters into raster stack 
+bathymetry <- stars::read_stars(here("data", "depth.tif"))
 ```
+
+```{r}
+# Compile all our SST rasters into one object
+sst_files <- list.files(
+  here("data"), pattern = "average", 
+  full.names = TRUE)
+```
+
+```{r}
+# Generate an empty vector 
+sst <- vector()
+
+# Fill the vector with out sst files
+for (i in seq_along(sst_files)) {
+  sst_file <- stars::read_stars(sst_files[i])
+  sst[i] <- sst_file
+}
+```
+
+```{r}
+# sst <- c(stars::read_stars(here("data", "average_annual_sst_2008.tif")),
+#          stars::read_stars(here("data", "average_annual_sst_2009.tif")),
+#          stars::read_stars(here("data", "average_annual_sst_2010.tif")),
+#          stars::read_stars(here("data", "average_annual_sst_2011.tif")),
+#          stars::read_stars(here("data", "average_annual_sst_2012.tif"))
+#          )
+```
+
 
 ### Check that CRS match
 ```{r}
@@ -44,11 +71,14 @@ sst <- # combine rasters into raster stack
 #| code-fold: true
 #| code-summary: "Reveal code"
 
-# Confirm the CRS match for the Houston rasters
-if(st_crs(roads) == st_crs(blackout_mask)) {
-    print("Coordinate reference systems match")
-  } else {
-      warning("Coordinate reference systems do not match, transforming now...")
-    roads <- st_transform(roads, crs=st_crs(blackout_mask))
+data_list <- list(bathymetry, sst, west_eez)
+
+for (i in 1:length(data_list)) {
+  if (st_crs(data_list[[i]]) != st_crs(bathymetry)) {
+ warning("The CRS of bathymetry and", i, "do not match, transforming now...")
+  df <- st_transform(df, crs = st_crs(data_list[[i]])) 
+ } else {
+    print(paste("The CRS of bathymetry and", i, "match"))
+  }
 }
 ```
