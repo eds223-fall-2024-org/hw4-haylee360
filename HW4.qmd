@@ -15,6 +15,7 @@ editor_options:
 ---
 
 ### Load packages
+
 ```{r}
 #| code-fold: true
 #| code-summary: "Reveal code"
@@ -32,53 +33,133 @@ library(patchwork)
 ```
 
 ## Read in data
+
 ```{r}
 west_eez <- read_sf(here("data", "wc_regions_clean.shp"))
-bathymetry <- stars::read_stars(here("data", "depth.tif"))
+depth <- terra::rast(here("data", "depth.tif"))
 ```
 
 ```{r}
 # Compile all our SST rasters into one object
-sst_files <- list.files(
-  here("data"), pattern = "average", 
-  full.names = TRUE)
+sst_files <- list.files(here("data"), 
+                        pattern = "average", 
+                        full.names = TRUE)
+
 ```
 
 ```{r}
 # Generate an empty vector 
-sst <- vector()
-
-# Fill the vector with out sst files
-for (i in seq_along(sst_files)) {
-  sst_file <- stars::read_stars(sst_files[i])
-  sst[i] <- sst_file
-}
+# sst <- c()
+# 
+# # Fill the vector with out sst files
+# for (i in seq_along(sst_files)) {
+#   sst_file <- terra::rast(sst_files[i])
+#   sst[i] <- sst_file
+# }
 ```
 
 ```{r}
-# sst <- c(stars::read_stars(here("data", "average_annual_sst_2008.tif")),
-#          stars::read_stars(here("data", "average_annual_sst_2009.tif")),
-#          stars::read_stars(here("data", "average_annual_sst_2010.tif")),
-#          stars::read_stars(here("data", "average_annual_sst_2011.tif")),
-#          stars::read_stars(here("data", "average_annual_sst_2012.tif"))
-#          )
+sst <- c(terra::rast(here("data", "average_annual_sst_2008.tif")),
+         terra::rast(here("data", "average_annual_sst_2009.tif")),
+         terra::rast(here("data", "average_annual_sst_2010.tif")),
+         terra::rast(here("data", "average_annual_sst_2011.tif")),
+         terra::rast(here("data", "average_annual_sst_2012.tif"))
+         )
 ```
 
+```{r}
+st_crs(west_eez) == st_crs(depth)
+st_crs(sst) == st_crs(depth)
+
+st_crs(west_eez)
+st_crs(depth)
+st_crs(sst)
+
+```
 
 ### Check that CRS match
+
 ```{r}
 #| warning: true
 #| code-fold: true
 #| code-summary: "Reveal code"
 
-data_list <- list(bathymetry, sst, west_eez)
+data_list <- list(depth, sst, west_eez)
 
 for (i in 1:length(data_list)) {
-  if (st_crs(data_list[[i]]) != st_crs(bathymetry)) {
- warning("The CRS of bathymetry and", i, "do not match, transforming now...")
-  df <- st_transform(df, crs = st_crs(data_list[[i]])) 
+  if (st_crs(data_list[[i]]) != st_crs(depth)) {
+ warning("The CRS of do not match, transforming now...")
+  data_list[[i]] <- terra::project(data_list[[i]], depth) 
  } else {
-    print(paste("The CRS of bathymetry and", i, "match"))
+    print(paste("The CRS match"))
   }
 }
 ```
+
+
+## Process data
+find the mean SST from 2008-2012 (e.g. create single raster of average SST)
+```{r}
+mean_sst <- app(sst, fun = mean)
+```
+
+convert average SST from Kelvin to Celsius
+hint: subtract by 273.15
+```{r}
+mean_sst <- mean_sst - 273.15
+```
+
+crop depth raster to match the extent of the SST raster
+note: the resolutions of the SST and depth data do not match
+```{r}
+depth_crop <- crop(depth, sst)
+```
+
+resample the depth data to match the resolution of the SST data using the nearest neighbor approach
+```{r}
+depth_resample <- resample(depth_crop, y = sst, method = "near")
+```
+
+```{r}
+# depth_resample <- st_transform(depth_resample, crs = st_crs(sst)) 
+depth_resample <- project(depth_resample, crs(sst))
+```
+
+check that the depth and SST match in resolution, extent, and coordinate reference system
+hint: can the rasters be stacked?
+```{r}
+depth_sst <- c(depth_resample, sst)
+```
+
+
+## Find suitable locations
+reclassify SST and depth data into locations that are suitable for oysters
+hint: set suitable values to 1 and unsuitable values to 0
+```{r}
+
+```
+
+find locations that satisfy both SST and depth conditions
+```{r}
+
+```
+
+## Determine the most suitable EEZ
+We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
+
+select suitable cells within West Coast EEZs
+```{r}
+
+```
+
+find area of grid cells
+```{r}
+
+```
+
+find the total suitable area within each EEZ
+hint: it might be helpful to rasterize the EEZ data
+```{r}
+
+```
+
