@@ -49,14 +49,14 @@ sst_files <- list.files(here("data"),
 
 ```{r}
 # Generate an empty vector 
-sst <- vector(length = length(sst_files))
-# Vector has no length so it won't fill, need to specify how long you want it to be
-
-# Fill the vector with sst files
-for (i in seq_along(sst_files)) {
-  sst_file <- terra::rast(sst_files[i])
-  sst[i] <- sst_file
-}
+# sst <- vector(length = length(sst_files))
+# # Vector has no length so it won't fill, need to specify how long you want it to be
+# 
+# # Fill the vector with sst files
+# for (i in seq_along(sst_files)) {
+#   sst_file <- terra::rast(sst_files[i])
+#   sst[i] <- sst_file
+# }
 ```
 
 ```{r}
@@ -192,7 +192,7 @@ We want to determine the total suitable area within each EEZ in order to rank zo
 
 select suitable cells within West Coast EEZs
 ```{r}
-eez_raster <- rasterize(west_eez, sst_depth, "rgn")
+eez_raster <- rasterize(west_eez, sst_depth, field="rgn")
 plot(eez_raster)
 
 # Crop by new raster
@@ -209,10 +209,8 @@ zonal_oysters
 
 find area of grid cells
 ```{r}
-masked_values <- values(sst_depth)
-masked_values <- masked_values[!is.na(masked_values)]
-area_cell <- cellSize(sst_depth)
-the_answer <- sum(masked_values) * area_cell
+area_cell <- cellSize(sst_depth, unit = "km")
+the_answer <- sst_depth * area_cell
 the_answer
 zonal_answer <- zonal(the_answer, eez_raster, fun = "sum", na.rm=TRUE)
 zonal_answer
