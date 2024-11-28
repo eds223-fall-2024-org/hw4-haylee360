@@ -33,39 +33,45 @@ aqua_fun <- function(species, max_sst, min_sst, max_depth, min_depth){
   depth_resample <- resample(depth_crop, y = sst, method = "near")
   
   # Create sst reclassification matrix
-  rcl_sst <- matrix(c(-Inf, min_sst, 0, 
+  rcl_sst <- matrix(c(-Inf, min_sst, NA, 
                       min_sst, max_sst, 1, 
-                      max_sst, Inf, 0),
+                      max_sst, Inf, NA),
                     ncol = 3, byrow = TRUE)
   
   # use reclassification matrix to reclassify sst raster
   reclass_sst <- classify(mean_sst, rcl = rcl_sst)
   
   # create depth reclassification matrix
-  rcl_depth <- matrix(c(-Inf, min_depth, 0, 
+  rcl_depth <- matrix(c(-Inf, min_depth, NA, 
                         min_depth, max_depth, 1, 
-                        max_depth, Inf, 0),
+                        max_depth, Inf, NA),
                       ncol = 3, byrow = TRUE)
   
   # use reclassification matrix to reclassify depth raster
   reclass_depth <- classify(depth_resample, rcl = rcl_depth)
   
   # Find locations that satisfy both sst and depth conditions
-  sst_depth <- reclass_sst * reclass_depth
+  sst_depth <- lapp(c(reclass_sst, reclass_depth), fun = "*")
   
   # Rasterize eez
-  eez_raster <- rasterize(eez, sst_depth, "rgn")
+  eez_raster <- rasterize(eez, sst_depth, field = "rgn")
   
-  # Crop by eez raster
-  sst_depth <- crop(sst_depth, eez_raster)
+  # Clip by eez raster
+  sst_depth_eez <- sst_depth[eez_raster, drop = FALSE]
+
+  # Find area of grid cells in suitable locations
+  area_cell <- cellSize(sst_depth_eez, unit = "km")
   
-  # Mask raster
-  sst_depth <- mask(sst_depth, eez_raster)
-  
-  # Zonal: summarize values in raster based on zones in raster
-  zonal_species <- zonal(sst_depth, eez_raster, fun = "sum", na.rm=TRUE)
+  eez_raster <- rasterize(west_eez,
+                          area_cell,
+                          field = 'rgn')
 
   
+  # Use zonal algebra to aggregate a grouping variable
+  eez_suitable <- zonal(x = area_cell, 
+                        z = eez_raster, # Raster representing zones
+                        fun = 'sum', # To add up total area
+                        na.rm = TRUE)
   
   }
 

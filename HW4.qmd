@@ -40,6 +40,17 @@ depth <- terra::rast(here("data", "depth.tif"))
 ```
 
 ```{r}
+sst2008 <- terra::rast(here("data", "average_annual_sst_2008.tif"))
+sst2009 <- terra::rast(here("data", "average_annual_sst_2009.tif"))
+sst2010 <- terra::rast(here("data", "average_annual_sst_2010.tif"))
+sst2011 <- terra::rast(here("data", "average_annual_sst_2011.tif"))
+sst2012 <- terra::rast(here("data", "average_annual_sst_2012.tif"))
+
+sst <- c(sst2008, sst2009, sst2010, sst2011, sst2012)
+```
+
+
+```{r}
 # Compile all our SST rasters into one object
 sst_files <- list.files(here("data"), 
                         pattern = "average", 
@@ -60,21 +71,44 @@ sst_files <- list.files(here("data"),
 ```
 
 ```{r}
-sst <- c(terra::rast(here("data", "average_annual_sst_2008.tif")),
-         terra::rast(here("data", "average_annual_sst_2009.tif")),
-         terra::rast(here("data", "average_annual_sst_2010.tif")),
-         terra::rast(here("data", "average_annual_sst_2011.tif")),
-         terra::rast(here("data", "average_annual_sst_2012.tif"))
-         )
+# sst <- c(terra::rast(here("data", "average_annual_sst_2008.tif")),
+#          terra::rast(here("data", "average_annual_sst_2009.tif")),
+#          terra::rast(here("data", "average_annual_sst_2010.tif")),
+#          terra::rast(here("data", "average_annual_sst_2011.tif")),
+#          terra::rast(here("data", "average_annual_sst_2012.tif"))
+#          )
 ```
+
+
+```{r}
+#| code-fold: true
+#| code-summary: "Reveal code"
+
+if(st_crs(west_eez) == st_crs(depth)) {
+  print("Coordinate reference systems match")
+} else{
+  warning("Updating coordinate reference systems to match")
+  # transform data to match
+  west_eez <- st_transform(west_eez, st_crs(depth))
+}
+
+if(st_crs(sst) == st_crs(depth)) {
+  print("Coordinate reference systems match")
+} else{
+  warning("Updating coordinate reference systems to match")
+  # transform data to match
+  sst <- project(sst, crs(depth))
+}
+```
+
 
 ```{r}
 st_crs(west_eez) == st_crs(depth)
 st_crs(sst) == st_crs(depth)
 
-st_crs(west_eez)
-st_crs(depth)
-st_crs(sst)
+# st_crs(west_eez)
+# st_crs(depth)
+# st_crs(sst)
 ```
 
 Pacific rock crabs
@@ -107,39 +141,30 @@ depth range 0 - 30 m
 
 ## Process data
 find the mean SST from 2008-2012 (e.g. create single raster of average SST)
+convert average SST from Kelvin to Celsius
+
 ```{r}
-depth <- project(depth, crs("EPSG:4326"))
-sst <- project(sst, crs("EPSG:4326"))
+# depth <- project(depth, crs("EPSG:4326"))
+# sst <- project(sst, crs("EPSG:4326"))
 
 mean_sst <- app(sst, fun = mean)
-```
 
-convert average SST from Kelvin to Celsius
-hint: subtract by 273.15
-```{r}
 mean_sst <- mean_sst - 273.15
 ```
 
-crop depth raster to match the extent of the SST raster
-note: the resolutions of the SST and depth data do not match
 ```{r}
-depth_crop <- crop(depth, sst)
-```
+# Crop the depth raster to match extent of sst
+depth_crop <- crop(depth, mean_sst)
 
-resample the depth data to match the resolution of the SST data using the nearest neighbor approach
-```{r}
-depth_resample <- resample(depth_crop, y = sst, method = "near")
-```
+# Resample depth to match resolution of sst
+depth_resample <- resample(depth_crop, y = mean_sst, method = "near")
 
-```{r}
-# depth_resample <- st_transform(depth_resample, crs = st_crs(sst)) 
-# depth_resample <- project(depth_resample, crs(sst))
 ```
 
 check that the depth and SST match in resolution, extent, and coordinate reference system
 hint: can the rasters be stacked?
 ```{r}
-depth_sst <- c(depth_resample, sst)
+test_stack <- c(depth_resample, mean_sst)
 ```
 
 
@@ -151,9 +176,9 @@ depth: 0-70 meters below sea level
 
 ```{r}
 # create sst reclassification matrix
-rcl_sst <- matrix(c(-Inf, 11, 0, 
+rcl_sst <- matrix(c(-Inf, 11, NA, 
                     11, 30, 1, 
-                    30, Inf, 0),
+                    30, Inf, NA),
                     ncol = 3, byrow = TRUE)
 
 # use reclassification matrix to reclassify sst raster
@@ -165,9 +190,9 @@ plot(reclass_sst)
 
 ```{r}
 # create sst reclassification matrix
-rcl_depth <- matrix(c(-Inf, 0, 0, 
-                    0, 70, 1, 
-                    70, Inf, 0),
+rcl_depth <- matrix(c(-Inf, -70, NA, 
+                    -70, 0, 1, 
+                    0, Inf, NA),
                     ncol = 3, byrow = TRUE)
 
 # use reclassification matrix to reclassify sst raster
@@ -180,45 +205,133 @@ plot(reclass_depth)
 
 find locations that satisfy both SST and depth conditions
 ```{r}
-# sst_depth <- lapp(c(reclass_sst, reclass_depth), fun = "*")
+sst_depth <- lapp(c(reclass_sst, reclass_depth), fun = "*")
+# sst_depth <- (reclass_depth == 1) & (reclass_sst == 1)
 
-sst_depth <- reclass_sst * reclass_depth
+# sst_depth <- reclass_sst * reclass_depth
 plot(sst_depth)
 
 ```
+
+```{r}
+suitable_area <- cellSize(x = sst_depth, 
+                          mask = TRUE,
+                          unit = 'km') # Selecting km from data
+
+# Initial plot
+plot(suitable_area)
+# Find the total suitable area within each EEZ
+
+# Rasterize EEZ data
+eez_raster <- rasterize(west_eez,
+                        suitable_area, # to this raster
+                        field = 'rgn') # Transfer values to each eez region
+
+# Initial plot
+plot(eez_raster)
+
+tm_shape(eez_raster) +
+  tm_raster() +
+  tm_shape(sst_depth) +
+  tm_raster()
+
+# Use zonal algebra to aggregate a grouping variable
+eez_suitable <- zonal(x = suitable_area, 
+                      z = eez_raster, # Raster representing zones
+                      fun = 'sum', # To add up total area
+                      na.rm = TRUE)
+eez_suitable
+```
+
 
 ## Determine the most suitable EEZ
 We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
 
 select suitable cells within West Coast EEZs
 ```{r}
+area_cell <- cellSize(sst_depth, unit = "km")
+
+sst_depth_eez <- area_cell[eez_raster, drop = FALSE]
+plot(sst_depth_eez)
+
 eez_raster <- rasterize(west_eez, sst_depth, field="rgn")
 plot(eez_raster)
 
-# Crop by new raster
-sst_depth <- crop(sst_depth, eez_raster)
 
+# Crop by new raster
+sst_depth_eez <- sst_depth[eez_raster, drop = FALSE]
+test_eez <- eez_raster[sst_depth, drop = FALSE]
+plot(test_eez)
 # Mask raster
-sst_depth <- mask(sst_depth, eez_raster)
+# sst_depth <- mask(sst_depth, eez_raster)
+plot(sst_depth_eez)
 
 # Zonal: summarize values in raster based on zones in raster
-zonal_oysters <- zonal(sst_depth, eez_raster, fun = "sum", na.rm=TRUE)
-zonal_oysters
+# zonal_oysters <- zonal(sst_depth_eez, eez_raster, fun = "sum", na.rm=TRUE)
+# zonal_oysters
 
 ```
 
 find area of grid cells
 ```{r}
-area_cell <- cellSize(sst_depth, unit = "km")
-the_answer <- sst_depth * area_cell
-the_answer
-zonal_answer <- zonal(the_answer, eez_raster, fun = "sum", na.rm=TRUE)
-zonal_answer
+area_cell <- cellSize(sst_depth_eez, unit = "km")
+plot(area_cell)
+
+eez_raster <- rasterize(west_eez,
+                        area_cell,
+                        field = 'rgn')
+
+# Initial plot
+plot(eez_raster)
+
+# Use zonal algebra to aggregate a grouping variable
+eez_suitable <- zonal(x = sst_depth_eez, 
+                      z = eez_raster, # Raster representing zones
+                      fun = 'sum', # To add up total area
+                      na.rm = TRUE)
+eez_suitable
+# the_answer <- sst_depth * area_cell
+# the_answer
+# 
+# zonal_answer <- zonal(the_answer, eez_raster, fun = "sum", na.rm=TRUE)
+# zonal_answer
 ```
 
 find the total suitable area within each EEZ
 hint: it might be helpful to rasterize the EEZ data
 ```{r}
-the_answer
+# Find the area of grid cells using cellSize
+
+suitable_area <- cellSize(x = masked_location, # Selecting suitable locations from above
+                 mask = TRUE, # When true, previous NA will carry over
+                 unit = 'km') # Selecting km from data
+
+# Initial plot
+plot(suitable_area)
+# Find the total suitable area within each EEZ
+
+# Rasterize EEZ data
+eez_raster <- rasterize(eez,
+                        suitable_area, # to this raster
+                        field = 'rgn') # Transfer values to each eez region
+
+# Initial plot
+plot(eez_raster)
+
+# Use zonal algebra to aggregate a grouping variable
+eez_suitable <- zonal(x = suitable_area, 
+                      z = eez_raster, # Raster representing zones
+                      fun = 'sum', # To add up total area
+                      na.rm = TRUE)
+
+# Print suitble area by EEZ
+print(paste0("Oyster suitable area in ", eez_suitable$rgn[1], " is ", eez_suitable$area[1], 'km'))
+print(paste0("Oyster suitable area in ", eez_suitable$rgn[2], " is ", eez_suitable$area[2], 'km'))
+print(paste0("Oyster suitable area in ", eez_suitable$rgn[3], " is ", eez_suitable$area[3], 'km'))
+print(paste0("Oyster suitable area in ", eez_suitable$rgn[4], " is ", eez_suitable$area[4], 'km'))
+print(paste0("Oyster suitable area in ", eez_suitable$rgn[5], " is ", eez_suitable$area[5], 'km'))
+
+
+
 ```
 
