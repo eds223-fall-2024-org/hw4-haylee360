@@ -234,11 +234,6 @@ eez_raster <- rasterize(eez,
 # Initial plot
 plot(eez_raster)
 
-# Plot regions and suitable areas together
-tm_shape(eez_raster) +
-  tm_raster() +
-  tm_shape(sst_depth) +
-  tm_raster()
 
 # Use zonal algebra to sum the suitable area by region
 eez_suitable <- zonal(x = suitable_area, 
@@ -253,6 +248,31 @@ print(paste0("Oyster suitable area in ", eez_suitable$rgn[2], " is ", round(eez_
 print(paste0("Oyster suitable area in ", eez_suitable$rgn[3], " is ", round(eez_suitable$area[3], 2), 'km'))
 print(paste0("Oyster suitable area in ", eez_suitable$rgn[4], " is ", round(eez_suitable$area[4], 2), 'km'))
 print(paste0("Oyster suitable area in ", eez_suitable$rgn[5], " is ", round(eez_suitable$area[5], 2), 'km'))
+```
+
+```{r}
+# Plot regions and suitable areas together
+tm_shape(depth) +
+  tm_raster(palette = "-GnBu",
+            # alpha = 0.5,
+            midpoint = 0,
+            legend.show = FALSE) +
+  tm_shape(eez_raster) +
+  tm_raster(palette = "Accent",
+            alpha = 0.7,
+            title = "EEZ") +
+  tm_shape(sst_depth) +
+  tm_raster(palette = "Set1",
+            title = "Suitable habitat") +
+  tm_compass(size = 1,
+             position = c("left", "bottom")) +
+  tm_scale_bar(position = c("left", "bottom")) +
+  tm_layout(legend.outside = TRUE,
+            frame = FALSE,
+            main.title = "West Coast Exclusive Economic Zones (EEZ)\nBest Suited to Oyster Aquaculture")
+
+
+
 ```
 
 
