@@ -251,26 +251,37 @@ print(paste0("Oyster suitable area in ", eez_suitable$rgn[5], " is ", round(eez_
 ```
 
 ```{r}
+sst_depth_vec <- as.polygons(sst_depth) %>% 
+  st_as_sf()
+```
+
+
+```{r}
 # Plot regions and suitable areas together
 tm_shape(depth) +
   tm_raster(palette = "-GnBu",
             # alpha = 0.5,
             midpoint = 0,
             legend.show = FALSE) +
+  # tm_shape(eez) +
+  # tm_borders(col = "black",
+  #            lwd = 1.5) +
   tm_shape(eez_raster) +
   tm_raster(palette = "Accent",
             alpha = 0.7,
             title = "EEZ") +
+  # tm_shape(sst_depth_vec) +
+  # tm_fill(col = "red") +
   tm_shape(sst_depth) +
   tm_raster(palette = "Set1",
-            title = "Suitable habitat") +
+            label = "Suitable habitat",
+            title = " ") +
   tm_compass(size = 1,
              position = c("left", "bottom")) +
   tm_scale_bar(position = c("left", "bottom")) +
   tm_layout(legend.outside = TRUE,
             frame = FALSE,
             main.title = "West Coast Exclusive Economic Zones (EEZ)\nBest Suited to Oyster Aquaculture")
-
 
 
 ```
