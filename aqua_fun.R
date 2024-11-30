@@ -28,7 +28,7 @@ aqua_fun <- function(species, min_sst, max_sst, min_depth, max_depth){
   # Read in sst rasters 
   sst <- c(rast(sst_files))
   
-  #Reproject CRS to EPSG:4326
+  # Reproject CRS to EPSG:4326
   depth <- project(depth, crs("EPSG:4326"))
   sst <- project(sst, crs("EPSG:4326"))
   eez <- st_transform(eez, crs = crs("EPSG:4326"))
@@ -64,47 +64,42 @@ aqua_fun <- function(species, min_sst, max_sst, min_depth, max_depth){
   # Find locations that satisfy both sst and depth conditions
   sst_depth <- lapp(c(reclass_sst, reclass_depth), fun = "*")
 
-  # Rasterize eez
-  eez_raster <- rasterize(eez, sst_depth, field = "rgn")
-
-  # Clip by eez raster
-  # sst_depth_eez <- sst_depth[eez_raster, drop = FALSE]
-
   # Find area of suitable cells
   suitable_area <- cellSize(x = sst_depth, # places where sst and depth match
                             mask = TRUE, # keeps NA values
                             unit = 'km') # Selecting km from data
-
+  # Rasterize eez
   eez_raster <- rasterize(eez,
                           suitable_area,
                           field = 'rgn')
 
-
   # Use zonal algebra to sum the suitable area by region
-  eez_suitable <- zonal(x = suitable_area,
+  eez_suitable <- zonal(x = suitable_area, 
                         z = eez_raster, # Raster representing zones
                         fun = 'sum', # To add up total area
                         na.rm = TRUE)
-
-  # Join area with geometry for EEZ
-  eez <- left_join(eez, eez_suitable, by = "rgn")
+  
+  # Join area with geometry to map later on
+  eez <- left_join(eez, eez_suitable, by = join_by(rgn))
 
   # Plot regions and suitable areas together
   tm_shape(depth) +
     tm_raster(palette = "-GnBu",
-              title = "Bathymetry (m)",
+              title = "Bathymetry\n(m above and below sea level)",
               # alpha = 0.5,
               midpoint = 0,
               legend.show = TRUE) +
-    tm_shape(eez) +
+    tm_shape(eez, raster.downsample = TRUE) +
     tm_polygons(col = "area",
                 palette = "Reds",
-                alpha = 0.7,
-                title = "Suitable habitat area (km^2)") +
+                alpha = 0.8,
+                linewidth = 0.2,
+                title = expression("Suitable habitat area (km"^2*")")) +
+    tm_text("rgn", size = 0.45) +
     tm_compass(size = 1,
                position = c("left", "bottom")) +
     tm_scale_bar(position = c("left", "bottom")) +
     tm_layout(legend.outside = TRUE,
               frame = FALSE,
-              main.title = paste0(species, " Suitable Habitat in\nWest Coast Exclusive Economic Zones (EEZ)"))
+              main.title = paste0(species, " Suitable Habitat in\nWest Coast Exclusive Economic Zones"))
   }

@@ -14,11 +14,16 @@ editor_options:
   chunk_output_type: console
 ---
 
-### Load packages
+## Background 
+This project explores the potential suitable habitat of marine aquaculture species off the West Coast of the United States. Marine aquaculture has the potential to play an important role in the global food supply as a more sustainable protein option than land-based meat production. This project will:
+
+-   Generate a map of suitable habitat for individual species based on sea surface temperature and depth via a function
+-   Walk through the process of collecting, processing, and visualizing the necessary geospatial data
+-   Turn the workflow into a reusable, generalizable function
 
 ```{r}
 #| code-fold: true
-#| code-summary: "Reveal code"
+#| code-summary: "Load packages"
 
 library(sf)
 library(here)
@@ -32,27 +37,46 @@ library(testthat)
 library(patchwork)
 ```
 
-How to add the names of the EEZ to the legend/map??
+## Aquaculture function
+Our function to visualize which exclusive economic zones are best-suited to marine aquaculture development for a given species takes 5 arguments:
+
+- `species` str, the name of the species of interest
+- `min_sst` int, the minimum sea surface temperature of the species
+- `max_sst` int, the maximum sea surface temperature of the species
+- `min_depth` int, the minimum depth of the species
+- `max_depth` int, the maximum depth of the species
+
 ```{r}
+# Source our final output function
 source("aqua_fun.R")
+
+# Visualize results for Dungeness Crabs
 aqua_fun("Dungeness Crab", 3, 19, -360, 0)
 ```
 
+This map shows the 5 major exclusive economic zones off the West Coast of the United States. These zones are Washington, Oregon, Northern California, Central California, and Southern California. The regions are colored by the amount of suitable habitat area (km^2) for the chosen species they contain. For example, with the Dungeness Crab, Oregon has the most amount of suitable habitat with Washington being second, and Southern California being third. 
+
+**Now that we understand the final output of our generalizable workflow function, let's break down the steps to get there.**
+
 ## Read in data
 
+We'll start by reading in data for exclusive economic zones of the west coast, bathymetry data, and sea surface temperature data.
+
 ```{r}
+# Read in eez and depth data
 eez <- read_sf(here("data", "wc_regions_clean.shp"))
 depth <- terra::rast(here("data", "depth.tif"))
 
 # Create list of sst files
 sst_files <- list.files(here("data"), 
-                        pattern = "average", 
+                        pattern = "average",
                         full.names = TRUE)
-# Read in sst rasters 
+
+# Read in sst rasters as a stack
 sst <- c(rast(sst_files))
 ```
 
-### Check that CRS match
+### Check that the CRS of our data match
 
 ```{r}
 #| code-fold: true
@@ -76,8 +100,9 @@ if(st_crs(sst) == st_crs(depth)) {
 }
 ```
 
-
 ## Process data
+
+Convert our SST data to the appropriate units and ensure the extent, resolution, and CRS of our depth and SST data match.
 
 ```{r}
 # Find the mean sst and convert to Celsius
@@ -88,87 +113,86 @@ mean_sst <- mean_sst - 273.15
 depth_crop <- crop(depth, mean_sst)
 
 # Resample depth to match resolution of sst
-depth_resample <- resample(depth_crop, y = mean_sst, method = "near")
+depth_resample <- resample(depth_crop, 
+                           y = mean_sst, 
+                           method = "near") # nearest neighbor
 
 # Check that resolution, extent, and CRS match
 test_stack <- c(depth_resample, mean_sst)
 ```
-
+Here, we resample by the nearest neighbor method which assigns the value of the nearest cell in the input raster to each cell in the output raster.
 
 ## Find suitable locations
+
 Reclassify SST and depth data into locations that are suitable for oysters
 
 ```{r}
-# create sst reclassification matrix
-rcl_sst <- matrix(c(-Inf, 11, NA, 
+# Create sst reclassification matrix
+rcl_sst <- matrix(c(-Inf, 11, NA, # min sst
                     11, 30, 1, 
-                    30, Inf, NA),
+                    30, Inf, NA), # max sst
                     ncol = 3, byrow = TRUE)
 
-# use reclassification matrix to reclassify sst raster
+# Use reclassification matrix to reclassify sst raster
 reclass_sst <- classify(mean_sst, rcl = rcl_sst)
-
-plot(reclass_sst, main = "Suitable SST regions")
 ```
 
-
 ```{r}
-# create sst reclassification matrix
-rcl_depth <- matrix(c(-Inf, -70, NA, 
+# Create depth reclassification matrix
+rcl_depth <- matrix(c(-Inf, -70, NA, # min depth
                     -70, 0, 1, 
-                    0, Inf, NA),
+                    0, Inf, NA), # max depth
                     ncol = 3, byrow = TRUE)
 
-# use reclassification matrix to reclassify sst raster
+# Use reclassification matrix to reclassify depth raster
 reclass_depth <- classify(depth_resample, rcl = rcl_depth)
-
-plot(reclass_depth, main = "Suitable depth regions")
 ```
 
 ```{r}
-# find locations that satisfy both SST and depth conditions
+# Find locations that satisfy both SST and depth conditions
 sst_depth <- lapp(c(reclass_sst, reclass_depth), fun = "*")
 
-plot(sst_depth, main = "Suitable SST and depth regions")
 ```
+Here, we reclassify our SST and depth rasters to show us only values that our species of choice can survive in. Then, we multiply those two rasters together to create a new raster that contains habitable SST and Depth values for our species.
 
 ## Determine the most suitable EEZ
+
 We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
 
 ```{r}
 # Find area of suitable cells 
 suitable_area <- cellSize(x = sst_depth, # places where sst and depth match
                           mask = TRUE, # keeps NA values
-                          unit = 'km') # Selecting km from data
-
+                          unit = 'km')
 
 # Rasterize EEZ data
 eez_raster <- rasterize(eez,
-                        suitable_area, # to this raster
+                        suitable_area, 
                         field = 'rgn') # Transfer values to each eez region
-
-
-
-# sst_depth_eez <- eez_raster*sst_depth
-# # Initial plot
-# plot(sst_depth_eez)
-
 
 # Use zonal algebra to sum the suitable area by region
 eez_suitable <- zonal(x = suitable_area, 
                       z = eez_raster, # Raster representing zones
-                      fun = 'sum', # To add up total area
-                      na.rm = TRUE)
+                      fun = 'sum', 
+                      na.rm = TRUE) 
 
 # To map our eez area with geometry later on
-eez <- left_join(eez, eez_suitable)
+eez <- left_join(eez, eez_suitable, by = "rgn")
+```
 
-kable(eez_suitable, digits = 2, caption = "Suitable area by EEZ (km^2)")
+```{r}
+#| code-fold: true
+#| code-summary: "Reveal code"
+
+# View the area per region of suitable habitat for Oysters
+kable(eez_suitable, digits = 2,
+      caption = "Suitable area by exclusive economic zone", 
+      col.names = c("EEZ Region", "Area (km^2)"))
 
 ```
 
-
-
+### Visualize results
+Finally, we'll map the exclusive economic zones of the West Coast and color them by total suitable area for Oysters. 
 ```{r}
 #| code-fold: true
 #| code-summary: "Reveal code"
@@ -176,36 +200,32 @@ kable(eez_suitable, digits = 2, caption = "Suitable area by EEZ (km^2)")
 # Plot regions and suitable areas together
 tm_shape(depth) +
   tm_raster(palette = "-GnBu",
-            title = "Bathymetry (m)",
+            title = "Bathymetry\n(m above and below sea level)",
             midpoint = 0,
             legend.show = TRUE) +
-  # tm_shape(eez) +
-  # tm_borders(col = "black",
-  #            lwd = 1.5) +
-  tm_shape(eez) +
+  tm_shape(eez, raster.downsample = TRUE) +
   tm_polygons(col = "area",
               palette = "Reds",
               alpha = 0.8,
               linewidth = 0.2,
-              title = "Suitable habitat area (km^2)") +
-  # tm_shape(sst_depth_vec) +
-  # tm_fill(col = "red") +
-  # tm_shape(sst_depth) +
-  # tm_raster(palette = "Set1",
-  #           label = "Suitable habitat",
-  #           title = " ") +
+              title = expression("Suitable habitat area (km"^2*")")) +
+  tm_text("rgn", size = 0.45) +
   tm_compass(size = 1,
              position = c("left", "bottom")) +
   tm_scale_bar(position = c("left", "bottom")) +
   tm_layout(legend.outside = TRUE,
             frame = FALSE,
-            main.title = "West Coast Exclusive Economic Zones (EEZ)\nBest Suited to Oyster Aquaculture")
-
+            main.title = "Oyster Suitable Habitat in\nWest Coast Exclusive Economic Zones")
 
 ```
 
+Similar to our map of Dungeness Crab at the beginning, we can see a representation of the 5 major exclusive economic zones off the West Coast of the United States colored by the amount of suitable habitat area (km^2) for the chosen species they contain. Oysters have the most suitable habitat in Central California, the second most in Southern California, and the third most in Washington. 
+
+## Reflection
+Overall, a function such as the one created here can be useful tool to help scientists and policymakers to understand where they should be directing their aquaculture development efforts on the West Coast. As climate and land-use change continue to become pressing threats to our global food systems, understanding where we might alleviate some of the terrestrial production pressure by turning to aquaculture is vitally important.
 
 ### Citations
+
 ```{r}
 #| code-fold: true
 #| code-summary: "Reveal code"
@@ -214,7 +234,8 @@ tribble(
   ~Data, ~Citation, ~Link,
   "Sea Surface Temperature Data", "NOAA Coral Reef Watch. 2019, updated daily. NOAA Coral Reef Watch Version 3.1 Daily 5km Satellite Regional Virtual Station Time Series Data. College Park, Maryland, USA: NOAA Coral Reef Watch. Data set accessed 2024-11-20 at https://coralreefwatch.noaa.gov/product/vs/data.php.", "[NOAA Coral Reef Watch](https://coralreefwatch.noaa.gov/product/5km/index_5km_ssta.php)",
   "Bathymetry Data", "GEBCO Compilation Group (2022) GEBCO_2022 Grid (doi:10.5285/e0f0bb80-ab44-2739-e053-6c86abc0289c)", "[GEBCO](https://www.gebco.net/data_and_products/gridded_bathymetry_data/#area)",
-  "Exclusive Economic Zones", "Flanders Marine Institute (2024): MarineRegions.org. Available online at www.marineregions.org. Consulted on 2024-11-30.", "[Marine Regions](https://www.marineregions.org/eez.php)"
+  "Exclusive Economic Zones", "Flanders Marine Institute (2024): MarineRegions.org. Available online at www.marineregions.org. Consulted on 2024-11-30.", "[Marine Regions](https://www.marineregions.org/eez.php)",
+  "Sea Life Base Aquaculture Data", "Palomares, M.L.D. and D. Pauly. Editors. 2024. SeaLifeBase. World Wide Web electronic publication. www.sealifebase.org, version (08/2024).", "[Sea Life Base](https://www.sealifebase.ca/search.php)"
 ) %>% 
   kable()
 ```
