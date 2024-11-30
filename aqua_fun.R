@@ -96,24 +96,15 @@ aqua_fun <- function(species, min_sst, max_sst, min_depth, max_depth){
               # alpha = 0.5,
               midpoint = 0,
               legend.show = TRUE) +
-    # tm_shape(eez) +
-    # tm_borders(col = "black",
-    #            lwd = 1.5) +
     tm_shape(eez) +
     tm_polygons(col = "area",
                 palette = "Reds",
                 alpha = 0.7,
                 title = "Suitable habitat area (km^2)") +
-    # tm_shape(sst_depth_vec) +
-    # tm_fill(col = "red") +
-    # tm_shape(sst_depth) +
-    # tm_raster(palette = "Set1",
-    #           label = "Suitable habitat",
-    #           title = " ") +
     tm_compass(size = 1,
                position = c("left", "bottom")) +
     tm_scale_bar(position = c("left", "bottom")) +
     tm_layout(legend.outside = TRUE,
               frame = FALSE,
-              main.title = paste0("West Coast Exclusive Economic Zones (EEZ)\nbest suited to ", species, " \nmarine aquaculture"))
+              main.title = paste0(species, " Suitable Habitat in\nWest Coast Exclusive Economic Zones (EEZ)"))
   }

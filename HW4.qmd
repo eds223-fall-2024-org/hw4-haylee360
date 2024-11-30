@@ -32,6 +32,7 @@ library(testthat)
 library(patchwork)
 ```
 
+How to add the names of the EEZ to the legend/map??
 ```{r}
 source("aqua_fun.R")
 aqua_fun("Dungeness Crab", 3, 19, -360, 0)
@@ -51,20 +52,11 @@ sst_files <- list.files(here("data"),
 sst <- c(rast(sst_files))
 ```
 
-
-```{r}
-# sst2008 <- terra::rast(here("data", "average_annual_sst_2008.tif"))
-# sst2009 <- terra::rast(here("data", "average_annual_sst_2009.tif"))
-# sst2010 <- terra::rast(here("data", "average_annual_sst_2010.tif"))
-# sst2011 <- terra::rast(here("data", "average_annual_sst_2011.tif"))
-# sst2012 <- terra::rast(here("data", "average_annual_sst_2012.tif"))
-# 
-# sst <- c(sst2008, sst2009, sst2010, sst2011, sst2012)
-```
-
+### Check that CRS match
 
 ```{r}
 #| code-fold: true
+#| warning: true
 #| code-summary: "Reveal code"
 
 if(st_crs(eez) == st_crs(depth)) {
@@ -85,57 +77,13 @@ if(st_crs(sst) == st_crs(depth)) {
 ```
 
 
-```{r}
-st_crs(eez) == st_crs(depth)
-st_crs(sst) == st_crs(depth)
-
-# st_crs(eez)
-# st_crs(depth)
-# st_crs(sst)
-```
-
-Pacific rock crabs
-depth range 0 - 91 m
-
-Pacific sea star
-depth range 0 - 30 m 
-24.7 - 29.3, mean 28.5
-
-### Check that CRS match
-
-```{r}
-#| warning: true
-#| code-fold: true
-#| code-summary: "Reveal code"
-
-# data_list <- list(depth, sst, west_eez)
-# 
-# for (i in 1:length(data_list)) {
-#   if (st_crs(data_list[[i]]) != st_crs(depth)) {
-#  warning("The CRS of do not match, transforming now...")
-#   data_list[[i]] <- terra::project(data_list[[i]], depth) 
-#  } else {
-#     print(paste("The CRS match"))
-#   }
-# }
-
-```
-
-
 ## Process data
-find the mean SST from 2008-2012 (e.g. create single raster of average SST)
-convert average SST from Kelvin to Celsius
 
 ```{r}
-# depth <- project(depth, crs("EPSG:4326"))
-# sst <- project(sst, crs("EPSG:4326"))
-
+# Find the mean sst and convert to Celsius
 mean_sst <- app(sst, fun = mean)
-
 mean_sst <- mean_sst - 273.15
-```
 
-```{r}
 # Crop the depth raster to match extent of sst
 depth_crop <- crop(depth, mean_sst)
 
@@ -148,10 +96,7 @@ test_stack <- c(depth_resample, mean_sst)
 
 
 ## Find suitable locations
-reclassify SST and depth data into locations that are suitable for oysters
-hint: set suitable values to 1 and unsuitable values to 0
-sea surface temperature: 11-30°C
-depth: 0-70 meters below sea level
+Reclassify SST and depth data into locations that are suitable for oysters
 
 ```{r}
 # create sst reclassification matrix
@@ -163,7 +108,7 @@ rcl_sst <- matrix(c(-Inf, 11, NA,
 # use reclassification matrix to reclassify sst raster
 reclass_sst <- classify(mean_sst, rcl = rcl_sst)
 
-plot(reclass_sst)
+plot(reclass_sst, main = "Suitable SST regions")
 ```
 
 
@@ -177,23 +122,19 @@ rcl_depth <- matrix(c(-Inf, -70, NA,
 # use reclassification matrix to reclassify sst raster
 reclass_depth <- classify(depth_resample, rcl = rcl_depth)
 
-plot(reclass_depth)
+plot(reclass_depth, main = "Suitable depth regions")
 ```
 
 ```{r}
 # find locations that satisfy both SST and depth conditions
 sst_depth <- lapp(c(reclass_sst, reclass_depth), fun = "*")
 
-plot(sst_depth)
+plot(sst_depth, main = "Suitable SST and depth regions")
 ```
 
 ## Determine the most suitable EEZ
 We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
 
-select suitable cells within West Coast EEZs
-find area of grid cells
-find the total suitable area within each EEZ
-hint: it might be helpful to rasterize the EEZ data
 ```{r}
 # Find area of suitable cells 
 suitable_area <- cellSize(x = sst_depth, # places where sst and depth match
@@ -207,9 +148,10 @@ eez_raster <- rasterize(eez,
                         field = 'rgn') # Transfer values to each eez region
 
 
-sst_depth_eez <- eez_raster*sst_depth
-# Initial plot
-plot(sst_depth_eez)
+
+# sst_depth_eez <- eez_raster*sst_depth
+# # Initial plot
+# plot(sst_depth_eez)
 
 
 # Use zonal algebra to sum the suitable area by region
@@ -217,25 +159,20 @@ eez_suitable <- zonal(x = suitable_area,
                       z = eez_raster, # Raster representing zones
                       fun = 'sum', # To add up total area
                       na.rm = TRUE)
-eez_suitable
 
+# To map our eez area with geometry later on
 eez <- left_join(eez, eez_suitable)
 
-# Print suitble area by EEZ
-print(paste0("Oyster suitable area in ", eez_suitable$rgn[1], " is ", round(eez_suitable$area[1], 2), 'km'))
-print(paste0("Oyster suitable area in ", eez_suitable$rgn[2], " is ", round(eez_suitable$area[2], 2), 'km'))
-print(paste0("Oyster suitable area in ", eez_suitable$rgn[3], " is ", round(eez_suitable$area[3], 2), 'km'))
-print(paste0("Oyster suitable area in ", eez_suitable$rgn[4], " is ", round(eez_suitable$area[4], 2), 'km'))
-print(paste0("Oyster suitable area in ", eez_suitable$rgn[5], " is ", round(eez_suitable$area[5], 2), 'km'))
-```
+kable(eez_suitable, digits = 2, caption = "Suitable area by EEZ (km^2)")
 
-```{r}
-sst_depth_vec <- as.polygons(sst_depth) %>% 
-  st_as_sf()
 ```
 
 
+
 ```{r}
+#| code-fold: true
+#| code-summary: "Reveal code"
+
 # Plot regions and suitable areas together
 tm_shape(depth) +
   tm_raster(palette = "-GnBu",
@@ -268,43 +205,16 @@ tm_shape(depth) +
 ```
 
 
-
-
-Old code
+### Citations
 ```{r}
-# Find area of suitable cells 
-# area_cell <- cellSize(sst_depth, unit = "km")
-# 
-# # Rasterize eez
-# eez_raster <- rasterize(eez, sst_depth, field="rgn")
-# plot(eez_raster)
-# 
-# # Clip suitable area by eez raster??
-# sst_depth_eez <- area_cell[eez_raster, drop = FALSE]
-# plot(sst_depth_eez)
-# 
-# 
-# 
-# # Crop by new raster
-# sst_depth_eez <- sst_depth[eez_raster, drop = FALSE]
-# test_eez <- eez_raster[sst_depth, drop = FALSE]
-# plot(test_eez)
-# # Mask raster
-# # sst_depth <- mask(sst_depth, eez_raster)
-# plot(sst_depth_eez)
+#| code-fold: true
+#| code-summary: "Reveal code"
 
-# Zonal: summarize values in raster based on zones in raster
-# zonal_oysters <- zonal(sst_depth_eez, eez_raster, fun = "sum", na.rm=TRUE)
-# zonal_oysters
-
-# the_answer <- sst_depth * area_cell
-# the_answer
-# 
-# zonal_answer <- zonal(the_answer, eez_raster, fun = "sum", na.rm=TRUE)
-# zonal_answer
-
+tribble(
+  ~Data, ~Citation, ~Link,
+  "Sea Surface Temperature Data", "NOAA Coral Reef Watch. 2019, updated daily. NOAA Coral Reef Watch Version 3.1 Daily 5km Satellite Regional Virtual Station Time Series Data. College Park, Maryland, USA: NOAA Coral Reef Watch. Data set accessed 2024-11-20 at https://coralreefwatch.noaa.gov/product/vs/data.php.", "[NOAA Coral Reef Watch](https://coralreefwatch.noaa.gov/product/5km/index_5km_ssta.php)",
+  "Bathymetry Data", "GEBCO Compilation Group (2022) GEBCO_2022 Grid (doi:10.5285/e0f0bb80-ab44-2739-e053-6c86abc0289c)", "[GEBCO](https://www.gebco.net/data_and_products/gridded_bathymetry_data/#area)",
+  "Exclusive Economic Zones", "Flanders Marine Institute (2024): MarineRegions.org. Available online at www.marineregions.org. Consulted on 2024-11-30.", "[Marine Regions](https://www.marineregions.org/eez.php)"
+) %>% 
+  kable()
 ```
-
-
-
-
